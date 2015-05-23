@@ -1,8 +1,8 @@
 ## Guides
 
-* [Application distribution](tutorial/application-distribution.md)
-* [Application packaging](tutorial/application-packaging.md)
-* [Using native node modules](tutorial/using-native-node-modules.md)
+* [Application distribution](../tutorial/application-distribution)
+* [Application packaging](../tutorial/application-packaging.md)
+* [Using native node modules](tutorial/using-native-node-modules)
 * [Debugging main process](tutorial/debugging-main-process.md)
 * [Using Selenium and WebDriver](tutorial/using-selenium-and-webdriver.md)
 * [DevTools extension](tutorial/devtools-extension.md)
