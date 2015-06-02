@@ -133,11 +133,13 @@ void InitAsarSupport(v8::Isolate* isolate,
   // Initialize asar support.
   base::Callback<void(v8::Local<v8::Value>,
                       v8::Local<v8::Value>,
-                      std::string)> init;
+                      const std::string&,
+                      const std::string&)> init;
   if (mate::ConvertFromV8(isolate, result, &init)) {
-    init.Run(process,
-             require,
-             std::string(node::asar_native, sizeof(node::asar_native) - 1));
+    init.Run(
+        process, require,
+        std::string(node::asar_native, sizeof(node::asar_native) - 1),
+        std::string(node::snapshot_native, sizeof(node::snapshot_native) - 1));
   }
 }
 

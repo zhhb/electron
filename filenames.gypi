@@ -53,6 +53,7 @@
     'coffee2c_sources': [
       'atom/common/lib/asar.coffee',
       'atom/common/lib/asar_init.coffee',
+      'atom/common/lib/snapshot.coffee',
     ],
     'lib_sources': [
       'atom/app/atom_content_client.cc',
