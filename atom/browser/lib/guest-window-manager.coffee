@@ -1,8 +1,28 @@
-ipc = require 'ipc'
+ipc = require 'ipc-main'
 v8Util = process.atomBinding 'v8_util'
 BrowserWindow = require 'browser-window'
 
 frameToGuest = {}
+
+# Copy attribute of |parent| to |child| if it is not defined in |child|.
+mergeOptions = (child, parent) ->
+  for own key, value of parent when key not in child
+    if typeof value is 'object'
+      child[key] = mergeOptions {}, value
+    else
+      child[key] = value
+  child
+
+# Merge |options| with the |embedder|'s window's options.
+mergeBrowserWindowOptions = (embedder, options) ->
+  if embedder.browserWindowOptions?
+    # Inherit the original options if it is a BrowserWindow.
+    mergeOptions options, embedder.browserWindowOptions
+  else
+    # Or only inherit web-preferences if it is a webview.
+    options.webPreferences ?= {}
+    mergeOptions options.webPreferences, embedder.getWebPreferences()
+  options
 
 # Create a new guest created by |embedder| with |options|.
 createGuest = (embedder, url, frameName, options) ->
@@ -21,9 +41,8 @@ createGuest = (embedder, url, frameName, options) ->
   # guest is closed by user then we should prevent |embedder| from double
   # closing guest.
   closedByEmbedder = ->
-    embedder.send 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_CLOSED', guest.id
     guest.removeListener 'closed', closedByUser
-    guest.destroy() unless guest.isClosed()
+    guest.destroy()
   closedByUser = ->
     embedder.send 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_CLOSED', guest.id
     embedder.removeListener 'render-view-deleted', closedByEmbedder
@@ -41,31 +60,37 @@ createGuest = (embedder, url, frameName, options) ->
 # Routed window.open messages.
 ipc.on 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_OPEN', (event, args...) ->
   [url, frameName, options] = args
-  event.sender.emit '-new-window', event, url, frameName, 7
-  if event.sender.isGuest() or event.defaultPrevented
+  options = mergeBrowserWindowOptions event.sender, options
+  event.sender.emit 'new-window', event, url, frameName, 'new-window', options
+  if (event.sender.isGuest() and not event.sender.allowPopups) or event.defaultPrevented
     event.returnValue = null
   else
-    event.returnValue = createGuest event.sender, args...
+    event.returnValue = createGuest event.sender, url, frameName, options
 
 ipc.on 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_CLOSE', (event, guestId) ->
-  return unless BrowserWindow.windows.has guestId
-  BrowserWindow.windows.get(guestId).destroy()
+  BrowserWindow.fromId(guestId)?.destroy()
 
 ipc.on 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_METHOD', (event, guestId, method, args...) ->
-  return unless BrowserWindow.windows.has guestId
-  BrowserWindow.windows.get(guestId)[method] args...
+  BrowserWindow.fromId(guestId)?[method] args...
 
 ipc.on 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_POSTMESSAGE', (event, guestId, message, targetOrigin) ->
-  return unless BrowserWindow.windows.has guestId
-  guestContents = BrowserWindow.windows.get(guestId).webContents
-  if guestContents.getUrl().indexOf(targetOrigin) is 0 or targetOrigin is '*'
-    guestContents.send 'ATOM_SHELL_GUEST_WINDOW_POSTMESSAGE', message, targetOrigin
+  guestContents = BrowserWindow.fromId(guestId)?.webContents
+  if guestContents?.getUrl().indexOf(targetOrigin) is 0 or targetOrigin is '*'
+    guestContents.send 'ATOM_SHELL_GUEST_WINDOW_POSTMESSAGE', guestId, message, targetOrigin
 
-ipc.on 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_OPENER_POSTMESSAGE', (event, message, targetOrigin) ->
+ipc.on 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WINDOW_OPENER_POSTMESSAGE', (event, guestId, message, targetOrigin, sourceOrigin) ->
   embedder = v8Util.getHiddenValue event.sender, 'embedder'
   if embedder?.getUrl().indexOf(targetOrigin) is 0 or targetOrigin is '*'
-    embedder.send 'ATOM_SHELL_GUEST_WINDOW_POSTMESSAGE', message, targetOrigin
+    embedder.send 'ATOM_SHELL_GUEST_WINDOW_POSTMESSAGE', guestId, message, sourceOrigin
 
 ipc.on 'ATOM_SHELL_GUEST_WINDOW_MANAGER_WEB_CONTENTS_METHOD', (event, guestId, method, args...) ->
-  return unless BrowserWindow.windows.has guestId
-  BrowserWindow.windows.get(guestId).webContents?[method] args...
+  BrowserWindow.fromId(guestId)?.webContents?[method] args...
+
+ipc.on 'ATOM_SHELL_GUEST_WINDOW_MANAGER_GET_GUEST_ID', (event) ->
+  embedder = v8Util.getHiddenValue event.sender, 'embedder'
+  if embedder?
+    guest = BrowserWindow.fromWebContents event.sender
+    if guest?
+      event.returnValue = guest.id
+      return
+  event.returnValue = null

@@ -4,12 +4,13 @@
 
 #include "atom/app/atom_library_main.h"
 
-#include "atom/app/atom_main_args.h"
 #include "atom/app/atom_main_delegate.h"
 #include "atom/app/node_main.h"
+#include "atom/common/atom_command_line.h"
 #include "base/at_exit.h"
 #include "base/i18n/icu_util.h"
 #include "base/mac/bundle_locations.h"
+#include "base/mac/scoped_nsautorelease_pool.h"
 #include "brightray/common/mac/main_application_bundle.h"
 #include "content/public/app/content_main.h"
 
@@ -25,6 +26,7 @@ int AtomMain(int argc, const char* argv[]) {
 
 int AtomInitializeICUandStartNode(int argc, char *argv[]) {
   base::AtExitManager atexit_manager;
+  base::mac::ScopedNSAutoreleasePool pool;
   base::mac::SetOverrideFrameworkBundlePath(
       brightray::MainApplicationBundlePath()
           .Append("Contents")

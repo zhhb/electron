@@ -6,9 +6,9 @@
 
 #include "atom/browser/native_window.h"
 #include "atom/common/native_mate_converters/accelerator_converter.h"
+#include "atom/common/native_mate_converters/callback.h"
 #include "atom/common/native_mate_converters/image_converter.h"
 #include "atom/common/native_mate_converters/string16_converter.h"
-#include "native_mate/callback.h"
 #include "native_mate/constructor.h"
 #include "native_mate/dictionary.h"
 #include "native_mate/object_template_builder.h"
@@ -20,11 +20,19 @@ namespace atom {
 namespace api {
 
 Menu::Menu()
-    : model_(new ui::SimpleMenuModel(this)),
+    : model_(new AtomMenuModel(this)),
       parent_(NULL) {
 }
 
 Menu::~Menu() {
+}
+
+void Menu::Destroy() {
+  model_.reset();
+}
+
+bool Menu::IsDestroyed() const {
+  return !model_;
 }
 
 void Menu::AfterInit(v8::Isolate* isolate) {
@@ -55,11 +63,10 @@ bool Menu::IsCommandIdVisible(int command_id) const {
 
 bool Menu::GetAcceleratorForCommandId(int command_id,
                                       ui::Accelerator* accelerator) {
-  v8::Isolate* isolate = v8::Isolate::GetCurrent();
-  v8::Locker locker(isolate);
-  v8::HandleScope handle_scope(isolate);
+  v8::Locker locker(isolate());
+  v8::HandleScope handle_scope(isolate());
   v8::Local<v8::Value> val = get_accelerator_.Run(command_id);
-  return mate::ConvertFromV8(isolate, val, accelerator);
+  return mate::ConvertFromV8(isolate(), val, accelerator);
 }
 
 void Menu::ExecuteCommand(int command_id, int event_flags) {
@@ -68,10 +75,6 @@ void Menu::ExecuteCommand(int command_id, int event_flags) {
 
 void Menu::MenuWillShow(ui::SimpleMenuModel* source) {
   menu_will_show_.Run();
-}
-
-void Menu::AttachToWindow(Window* window) {
-  window->window()->SetMenu(model_.get());
 }
 
 void Menu::InsertItemAt(
@@ -110,6 +113,10 @@ void Menu::SetIcon(int index, const gfx::Image& image) {
 
 void Menu::SetSublabel(int index, const base::string16& sublabel) {
   model_->SetSublabel(index, sublabel);
+}
+
+void Menu::SetRole(int index, const base::string16& role) {
+  model_->SetRole(index, role);
 }
 
 void Menu::Clear() {
@@ -159,6 +166,7 @@ void Menu::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("insertSubMenu", &Menu::InsertSubMenuAt)
       .SetMethod("setIcon", &Menu::SetIcon)
       .SetMethod("setSublabel", &Menu::SetSublabel)
+      .SetMethod("setRole", &Menu::SetRole)
       .SetMethod("clear", &Menu::Clear)
       .SetMethod("getIndexOfCommandId", &Menu::GetIndexOfCommandId)
       .SetMethod("getItemCount", &Menu::GetItemCount)
@@ -168,7 +176,6 @@ void Menu::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("isItemCheckedAt", &Menu::IsItemCheckedAt)
       .SetMethod("isEnabledAt", &Menu::IsEnabledAt)
       .SetMethod("isVisibleAt", &Menu::IsVisibleAt)
-      .SetMethod("attachToWindow", &Menu::AttachToWindow)
       .SetMethod("_popup", &Menu::Popup)
       .SetMethod("_popupAt", &Menu::PopupAt);
 }

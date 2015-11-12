@@ -11,6 +11,10 @@
 #include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 
+#if defined(OS_WIN)
+#include <windows.h>
+#endif
+
 namespace atom {
 
 class NativeWindowObserver {
@@ -55,14 +59,19 @@ class NativeWindowObserver {
   virtual void OnWindowEnterHtmlFullScreen() {}
   virtual void OnWindowLeaveHtmlFullScreen() {}
 
-  // Called when devtools window gets focused.
-  virtual void OnDevToolsFocus() {}
+  // Called when window message received
+  #if defined(OS_WIN)
+  virtual void OnWindowMessage(UINT message, WPARAM w_param, LPARAM l_param) {}
+  #endif
 
   // Called when renderer is hung.
   virtual void OnRendererUnresponsive() {}
 
   // Called when renderer recovers.
   virtual void OnRendererResponsive() {}
+
+  // Called on Windows when App Commands arrive (WM_APPCOMMAND)
+  virtual void OnExecuteWindowsCommand(const std::string& command_name) {}
 };
 
 }  // namespace atom

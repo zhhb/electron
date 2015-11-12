@@ -1,25 +1,39 @@
-process = global.process
-ipc = require 'ipc'
+ipc = require 'ipc-renderer'
 v8Util = process.atomBinding 'v8_util'
 CallbacksRegistry = require 'callbacks-registry'
 
 callbacksRegistry = new CallbacksRegistry
 
+# Check for circular reference.
+isCircular = (field, visited) ->
+  if typeof field is 'object'
+    if field in visited
+      return true
+    visited.push field
+  return false
+
 # Convert the arguments object into an array of meta data.
-wrapArgs = (args) ->
+wrapArgs = (args, visited=[]) ->
   valueToMeta = (value) ->
     if Array.isArray value
-      type: 'array', value: wrapArgs(value)
+      type: 'array', value: wrapArgs(value, visited)
+    else if Buffer.isBuffer value
+      type: 'buffer', value: Array::slice.call(value, 0)
+    else if value? and value.constructor.name is 'Promise'
+      type: 'promise', then: valueToMeta(value.then.bind(value))
     else if value? and typeof value is 'object' and v8Util.getHiddenValue value, 'atomId'
       type: 'remote-object', id: v8Util.getHiddenValue value, 'atomId'
     else if value? and typeof value is 'object'
       ret = type: 'object', name: value.constructor.name, members: []
-      ret.members.push(name: prop, value: valueToMeta(field)) for prop, field of value
+      for prop, field of value
+        ret.members.push
+          name: prop
+          value: valueToMeta(if isCircular(field, visited) then null else field)
       ret
     else if typeof value is 'function' and v8Util.getHiddenValue value, 'returnValue'
       type: 'function-with-return-value', value: valueToMeta(value())
     else if typeof value is 'function'
-      type: 'function', id: callbacksRegistry.add(value)
+      type: 'function', id: callbacksRegistry.add(value), location: v8Util.getHiddenValue value, 'location'
     else
       type: 'value', value: value
 
@@ -30,7 +44,11 @@ metaToValue = (meta) ->
   switch meta.type
     when 'value' then meta.value
     when 'array' then (metaToValue(el) for el in meta.members)
-    when 'error'
+    when 'buffer' then new Buffer(meta.value)
+    when 'promise' then Promise.resolve(then: metaToValue(meta.then))
+    when 'error' then metaToPlainObject meta
+    when 'date' then new Date(meta.value)
+    when 'exception'
       throw new Error("#{meta.message}\n#{meta.stack}")
     else
       if meta.type is 'function'
@@ -85,19 +103,27 @@ metaToValue = (meta) ->
       # Track delegate object's life time, and tell the browser to clean up
       # when the object is GCed.
       v8Util.setDestructor ret, ->
-        ipc.send 'ATOM_BROWSER_DEREFERENCE', meta.storeId
+        ipc.send 'ATOM_BROWSER_DEREFERENCE', meta.id
 
       # Remember object's id.
       v8Util.setHiddenValue ret, 'atomId', meta.id
 
       ret
 
+# Construct a plain object from the meta.
+metaToPlainObject = (meta) ->
+  obj = switch meta.type
+    when 'error' then new Error
+    else {}
+  obj[name] = value for {name, value} in meta.members
+  obj
+
 # Browser calls a callback in renderer.
-ipc.on 'ATOM_RENDERER_CALLBACK', (id, args) ->
+ipc.on 'ATOM_RENDERER_CALLBACK', (event, id, args) ->
   callbacksRegistry.apply id, metaToValue(args)
 
 # A callback in browser is released.
-ipc.on 'ATOM_RENDERER_RELEASE_CALLBACK', (id) ->
+ipc.on 'ATOM_RENDERER_RELEASE_CALLBACK', (event, id) ->
   callbacksRegistry.remove id
 
 # Get remote module.
@@ -114,7 +140,7 @@ exports.require = (module) ->
 windowCache = null
 exports.getCurrentWindow = ->
   return windowCache if windowCache?
-  meta = ipc.sendSync 'ATOM_BROWSER_CURRENT_WINDOW', process.guestInstanceId
+  meta = ipc.sendSync 'ATOM_BROWSER_CURRENT_WINDOW'
   windowCache = metaToValue meta
 
 # Get current WebContents object.

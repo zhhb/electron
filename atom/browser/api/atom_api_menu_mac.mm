@@ -18,11 +18,16 @@ namespace api {
 MenuMac::MenuMac() {
 }
 
+void MenuMac::Destroy() {
+  menu_controller_.reset();
+  Menu::Destroy();
+}
+
 void MenuMac::Popup(Window* window) {
   NativeWindow* native_window = window->window();
   if (!native_window)
     return;
-  content::WebContents* web_contents = native_window->GetWebContents();
+  content::WebContents* web_contents = native_window->web_contents();
   if (!web_contents)
     return;
 
@@ -54,7 +59,7 @@ void MenuMac::PopupAt(Window* window, int x, int y) {
   NativeWindow* native_window = window->window();
   if (!native_window)
     return;
-  content::WebContents* web_contents = native_window->GetWebContents();
+  content::WebContents* web_contents = native_window->web_contents();
   if (!web_contents)
     return;
 

@@ -1,4 +1,4 @@
-ipc = require 'ipc'
+ipc = require 'ipc-main'
 
 # The history operation in renderer is redirected to browser.
 ipc.on 'ATOM_SHELL_NAVIGATION_CONTROLLER', (event, method, args...) ->
@@ -15,6 +15,11 @@ ipc.on 'ATOM_SHELL_SYNC_NAVIGATION_CONTROLLER', (event, method, args...) ->
 class NavigationController
   constructor: (@webContents) ->
     @clearHistory()
+
+    # webContents may have already navigated to a page.
+    if @webContents._getUrl()
+      @currentIndex++
+      @history.push @webContents._getUrl()
 
     @webContents.on 'navigation-entry-commited', (event, url, inPage, replaceEntry) =>
       if @inPageIndex > -1 and not inPage
@@ -40,6 +45,7 @@ class NavigationController
   loadUrl: (url, options={}) ->
     @pendingIndex = -1
     @webContents._loadUrl url, options
+    @webContents.emit 'load-url', url, options
 
   getUrl: ->
     if @currentIndex is -1

@@ -1,11 +1,12 @@
-ipc = require 'ipc'
+ipc = require 'ipc-renderer'
 webFrame = require 'web-frame'
 
 requestId = 0
 
 WEB_VIEW_EVENTS =
+  'load-commit': ['url', 'isMainFrame']
   'did-finish-load': []
-  'did-fail-load': ['errorCode', 'errorDescription']
+  'did-fail-load': ['errorCode', 'errorDescription', 'validatedUrl']
   'did-frame-finish-load': ['isMainFrame']
   'did-start-loading': []
   'did-stop-loading': []
@@ -15,7 +16,7 @@ WEB_VIEW_EVENTS =
   'did-get-redirect-request': ['oldUrl', 'newUrl', 'isMainFrame']
   'dom-ready': []
   'console-message': ['level', 'message', 'line', 'sourceId']
-  'new-window': ['url', 'frameName', 'disposition']
+  'new-window': ['url', 'frameName', 'disposition', 'options']
   'close': []
   'crashed': []
   'gpu-crashed': []
@@ -27,24 +28,25 @@ WEB_VIEW_EVENTS =
   'leave-html-full-screen': []
 
 dispatchEvent = (webView, event, args...) ->
-  throw new Error("Unkown event #{event}") unless WEB_VIEW_EVENTS[event]?
+  throw new Error("Unknown event #{event}") unless WEB_VIEW_EVENTS[event]?
   domEvent = new Event(event)
   for f, i in WEB_VIEW_EVENTS[event]
     domEvent[f] = args[i]
   webView.dispatchEvent domEvent
+  webView.onLoadCommit domEvent if event == 'load-commit'
 
 module.exports =
   registerEvents: (webView, viewInstanceId) ->
-    ipc.on "ATOM_SHELL_GUEST_VIEW_INTERNAL_DISPATCH_EVENT-#{viewInstanceId}", (event, args...) ->
-      dispatchEvent webView, event, args...
+    ipc.on "ATOM_SHELL_GUEST_VIEW_INTERNAL_DISPATCH_EVENT-#{viewInstanceId}", (event, domEvent, args...) ->
+      dispatchEvent webView, domEvent, args...
 
-    ipc.on "ATOM_SHELL_GUEST_VIEW_INTERNAL_IPC_MESSAGE-#{viewInstanceId}", (channel, args...) ->
+    ipc.on "ATOM_SHELL_GUEST_VIEW_INTERNAL_IPC_MESSAGE-#{viewInstanceId}", (event, channel, args...) ->
       domEvent = new Event('ipc-message')
       domEvent.channel = channel
       domEvent.args = [args...]
       webView.dispatchEvent domEvent
 
-    ipc.on "ATOM_SHELL_GUEST_VIEW_INTERNAL_SIZE_CHANGED-#{viewInstanceId}", (args...) ->
+    ipc.on "ATOM_SHELL_GUEST_VIEW_INTERNAL_SIZE_CHANGED-#{viewInstanceId}", (event, args...) ->
       domEvent = new Event('size-changed')
       for f, i in ['oldWidth', 'oldHeight', 'newWidth', 'newHeight']
         domEvent[f] = args[i]
